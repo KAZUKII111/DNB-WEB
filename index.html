@@ -231,27 +231,51 @@ qs('reset').addEventListener('click', ()=>{
   clearCells();
 });
 </script>
-<<!-- 軽量パスコードゲート -->
+
+
+
+
+<!-- パスコードゲート（全角→半角正規化 & URLバイパス ?code=1234 対応） -->
 <div id="gate" style="position:fixed;inset:0;background:#2b2b2b;display:flex;align-items:center;justify-content:center;z-index:9999;">
   <div style="background:#1f1f1f;padding:20px 24px;border:1px solid #444;border-radius:12px;color:#eee;text-align:center;max-width:300px;">
     <div style="margin-bottom:12px;font-weight:600;">アクセスコードを入力</div>
-    <input id="gateInput" type="password" style="width:100%;padding:10px;border-radius:8px;border:1px solid #444;background:#111;color:#eee">
+    <input id="gateInput" type="password" inputmode="numeric" autocomplete="off"
+           style="width:100%;padding:10px;border-radius:8px;border:1px solid #444;background:#111;color:#eee">
     <button id="gateBtn" style="margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid #444;background:#4caf50;color:#fff;width:100%;">Enter</button>
     <div id="gateMsg" style="color:#e57373;margin-top:8px;min-height:1em;"></div>
+    <div style="opacity:.6;font-size:12px;margin-top:8px;">数字は半角で入力してください</div>
   </div>
 </div>
 <script>
-  const ACCESS_CODE = "1234"; // ←好きなコードに変えてOK
+  const ACCESS_CODE = "271314"; // ←好きなコードに変更OK
   const gate = document.getElementById("gate");
   const ipt  = document.getElementById("gateInput");
   const btn  = document.getElementById("gateBtn");
   const msg  = document.getElementById("gateMsg");
-  if(localStorage.getItem("dnb-pass-ok")==="1"){ gate.style.display="none"; }
-  btn.onclick = ()=>{
-    if(ipt.value===ACCESS_CODE){ localStorage.setItem("dnb-pass-ok","1"); gate.style.display="none"; }
-    else { msg.textContent="コードが違います"; }
-  };
-  ipt.addEventListener("keydown",e=>{ if(e.key==="Enter") btn.click(); });
+
+  // 半角化 & 前後空白除去
+  const normalize = (s) => s.replace(/[！-～]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).trim();
+
+  // すでに通過済みなら表示しない
+  if (localStorage.getItem("dnb-pass-ok") === "1") gate.style.display = "none";
+
+  // URLバイパス: ?code=XXXX で通過
+  const q = new URLSearchParams(location.search);
+  if (q.get("code") && normalize(q.get("code")) === ACCESS_CODE) {
+    localStorage.setItem("dnb-pass-ok","1"); gate.style.display = "none";
+  }
+
+  function tryEnter(){
+    const v = normalize(ipt.value);
+    if (v === ACCESS_CODE) {
+      localStorage.setItem("dnb-pass-ok","1");
+      gate.style.display = "none";
+    } else {
+      msg.textContent = "コードが違います（半角で入力してね）";
+    }
+  }
+  btn.onclick = tryEnter;
+  ipt.addEventListener("keydown", e => { if (e.key === "Enter") tryEnter(); });
 </script>
 /body>
 </html>
