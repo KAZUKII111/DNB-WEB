@@ -37,7 +37,10 @@
   .ans button.ng{background:var(--ng)}
   .footer{opacity:.6;font-size:12px;text-align:center;margin-top:6px}
 </style>
+ <meta name="robots" content="noindex,nofollow">
+
 </head>
+
 <body>
 <div class="wrap">
   <div class="hud">
@@ -228,5 +231,27 @@ qs('reset').addEventListener('click', ()=>{
   clearCells();
 });
 </script>
-</body>
+<<!-- 軽量パスコードゲート -->
+<div id="gate" style="position:fixed;inset:0;background:#2b2b2b;display:flex;align-items:center;justify-content:center;z-index:9999;">
+  <div style="background:#1f1f1f;padding:20px 24px;border:1px solid #444;border-radius:12px;color:#eee;text-align:center;max-width:300px;">
+    <div style="margin-bottom:12px;font-weight:600;">アクセスコードを入力</div>
+    <input id="gateInput" type="password" style="width:100%;padding:10px;border-radius:8px;border:1px solid #444;background:#111;color:#eee">
+    <button id="gateBtn" style="margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid #444;background:#4caf50;color:#fff;width:100%;">Enter</button>
+    <div id="gateMsg" style="color:#e57373;margin-top:8px;min-height:1em;"></div>
+  </div>
+</div>
+<script>
+  const ACCESS_CODE = "1234"; // ←好きなコードに変えてOK
+  const gate = document.getElementById("gate");
+  const ipt  = document.getElementById("gateInput");
+  const btn  = document.getElementById("gateBtn");
+  const msg  = document.getElementById("gateMsg");
+  if(localStorage.getItem("dnb-pass-ok")==="1"){ gate.style.display="none"; }
+  btn.onclick = ()=>{
+    if(ipt.value===ACCESS_CODE){ localStorage.setItem("dnb-pass-ok","1"); gate.style.display="none"; }
+    else { msg.textContent="コードが違います"; }
+  };
+  ipt.addEventListener("keydown",e=>{ if(e.key==="Enter") btn.click(); });
+</script>
+/body>
 </html>
