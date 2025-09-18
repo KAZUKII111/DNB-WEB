@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>DNB Web</title>
+<style>
+  :root{
+    --bg:#2b2b2b; --text:#eeeeee; --muted:#6b6b6b;
+    --sel:#6aa684; --ok:#2196f3; --ng:#e57373;
+    --cellText:#cfd3d4; --grid-gap:16px;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,sans-serif}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px;display:flex;flex-direction:column;height:100%}
+  .hud{display:flex;align-items:center;gap:16px}
+  .hud .rates{flex:1}
+  .panel{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start;margin-top:8px}
+  .cfg{border:1px solid #444;border-radius:12px;padding:12px}
+  .cfg h3{margin:0 0 8px 0;font-size:16px}
+  .cfg .row{display:grid;grid-template-columns:1fr 100px;align-items:center;gap:8px;margin:6px 0}
+  input[type="number"]{width:100%;padding:6px 8px;background:#1f1f1f;border:1px solid #444;color:var(--text);border-radius:8px}
+  .actions{display:flex;flex-direction:column;gap:8px}
+  button{padding:12px 14px;border-radius:12px;border:1px solid #444;background:var(--muted);color:#eaeaea;font-size:18px;cursor:pointer}
+  button.green{background:#4caf50}
+  button.gray{background:#777}
+  .spacer{flex:1}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:var(--grid-gap);aspect-ratio:1/1;margin:16px auto 24px;width:min(90vw,680px)}
+  .cell{display:flex;align-items:center;justify-content:center;border:none;background:transparent;position:relative}
+  .stim{font-weight:800;font-size:48px;line-height:1}
+  .ring{position:absolute;inset:8px;border:6px solid transparent;border-radius:12px;pointer-events:none}
+  .ring.circle{border-radius:56px}
+  .hidden .stim{color:transparent}
+  .hidden .ring{border-color:transparent}
+  .ans{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:12px}
+  .ans button.selected{background:var(--sel)}
+  .ans button.ok{background:var(--ok)}
+  .ans button.ng{background:var(--ng)}
+  .footer{opacity:.6;font-size:12px;text-align:center;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hud">
+    <div class="rates" id="rates">場所0% 文字0% 色0% 形0% | 合計0%</div>
+    <div id="nLabel">N: 2</div>
+    <div id="qLabel">問: 0 / 0</div>
+  </div>
+
+  <div class="panel">
+    <div class="cfg">
+      <h3>設定</h3>
+      <div class="row"><label>N</label><input id="n" type="number" min="1" max="999" value="2"></div>
+      <div class="row"><label>位置マッチ率(%)</label><input id="mPos" type="number" min="0" max="100" value="25"></div>
+      <div class="row"><label>文字マッチ率(%)</label><input id="mLet" type="number" min="0" max="100" value="25"></div>
+      <div class="row"><label>色マッチ率(%)</label><input id="mCol" type="number" min="0" max="100" value="25"></div>
+      <div class="row"><label>形マッチ率(%)</label><input id="mShp" type="number" min="0" max="100" value="25"></div>
+      <div class="row"><label>表示秒</label><input id="disp" type="number" step="0.1" min="0.1" max="10" value="2"></div>
+      <div class="row"><label>間隔秒</label><input id="isi" type="number" step="0.1" min="0.1" max="10" value="4"></div>
+    </div>
+    <div class="actions">
+      <button id="start" class="green">開始</button>
+      <button id="reset" class="gray">リセット</button>
+    </div>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="ans">
+    <button id="bPos">場所</button>
+    <button id="bLet">文字</button>
+    <button id="bCol">色</button>
+    <button id="bShp">形</button>
+  </div>
+  <div class="footer">表示2秒 + 間隔4秒の6秒間はボタンの選択/取消ができます。各試行の最後に青=正、赤=誤が表示されます。</div>
+</div>
+
+<script>
+/* ==== ユーティリティ ==== */
+const LETTERS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'];
+const SHAPES = ['circle','square'];
+const COLORS = ['#22FF66','#2196F3','#E57373']; // 緑/青/赤（枠色）
+const POS = Array.from({length:9},(_,i)=>[Math.floor(i/3), i%3]);
+
+function qs(id){return document.getElementById(id)}
+function pct(c,t){return t>0? Math.round(100*c/t):0}
+
+/* ==== DOM 準備 ==== */
+const grid = qs('grid');
+const cells = [];
+for(let i=0;i<9;i++){
+  const cell = document.createElement('div'); cell.className='cell hidden';
+  const ring = document.createElement('div'); ring.className='ring square';
+  const stim = document.createElement('div'); stim.className='stim'; stim.textContent='';
+  cell.append(ring, stim); grid.appendChild(cell); cells.push({cell, ring, stim});
+}
+
+const btn = {
+  pos: qs('bPos'), letter: qs('bLet'), color: qs('bCol'), shape: qs('bShp')
+};
+const rates = qs('rates'), nLabel=qs('nLabel'), qLabel=qs('qLabel');
+const inputs = { n:qs('n'), mPos:qs('mPos'), mLet:qs('mLet'), mCol:qs('mCol'), mShp:qs('mShp'), disp:qs('disp'), isi:qs('isi') };
+
+/* ==== 状態 ==== */
+let phase='idle';           // idle/show/isi/feedback/done
+let timer=null;
+let N=2, presentOnly=0, totalTrials=0, trial=0;
+let history=[];
+let allowInput=false;
+let selected={pos:false,letter:false,color:false,shape:false};
+let stats={pos:{c:0,t:0}, letter:{c:0,t:0}, color:{c:0,t:0}, shape:{c:0,t:0}};
+const feedbackMs=350;
+
+/* ==== UIヘルパ ==== */
+function clearCells(){
+  cells.forEach(x=>{ x.cell.classList.add('hidden'); x.ring.style.borderColor='transparent'; x.stim.textContent=''; });
+}
+function renderStim(st){
+  clearCells();
+  const idx = st.pos[0]*3 + st.pos[1];
+  const c = cells[idx];
+  c.cell.classList.remove('hidden');
+  c.ring.style.borderColor = st.color;
+  c.ring.classList.toggle('circle', st.shape==='circle');
+  c.ring.classList.toggle('square', st.shape==='square');
+  c.stim.textContent = st.letter;
+  c.stim.style.color = getComputedStyle(document.documentElement).getPropertyValue('--cellText');
+}
+function setBtnState(){
+  for(const k of ['pos','letter','color','shape']){
+    btn[k].classList.toggle('selected', selected[k]);
+    btn[k].classList.remove('ok','ng'); // フィードバック色は次試行開始でリセット
+  }
+}
+for(const k of ['pos','letter','color','shape']){
+  btn[k].addEventListener('click', ()=>{
+    if(!allowInput) return;
+    selected[k]=!selected[k];
+    setBtnState();
+  });
+}
+
+/* ==== 刺激生成 ==== */
+function genStim(){
+  const canMatch = history.length>=N;
+  let pos = POS[Math.floor(Math.random()*POS.length)];
+  let letter = LETTERS[Math.floor(Math.random()*LETTERS.length)];
+  let color = COLORS[Math.floor(Math.random()*COLORS.length)];
+  let shape = SHAPES[Math.floor(Math.random()*SHAPES.length)];
+  if(canMatch){
+    const back = history[history.length-N];
+    if(Math.random() < inputs.mPos.value/100)   pos = back.pos;
+    if(Math.random() < inputs.mLet.value/100) letter = back.letter;
+    if(Math.random() < inputs.mCol.value/100) color = back.color;
+    if(Math.random() < inputs.mShp.value/100) shape = back.shape;
+  }
+  return {pos,letter,color,shape};
+}
+
+/* ==== 採点 ==== */
+function finalizeTrial(){
+  const curIdx = history.length-1, backIdx = curIdx - N;
+  if(backIdx<0) return;
+  const cur = history[curIdx], prev = history[backIdx];
+  const truth = {
+    pos: JSON.stringify(cur.pos)===JSON.stringify(prev.pos),
+    letter: cur.letter===prev.letter,
+    color: cur.color===prev.color,
+    shape: cur.shape===prev.shape
+  };
+  for(const [k,button] of Object.entries(btn)){
+    const sel = selected[k];
+    const ok = (truth[k] && sel) || (!truth[k] && !sel);
+    stats[k].t += 1; if(ok) stats[k].c += 1;
+    button.classList.toggle('ok', ok);
+    button.classList.toggle('ng', !ok);
+  }
+  updateRates();
+}
+function updateRates(){
+  const pPos=pct(stats.pos.c,stats.pos.t),
+        pLet=pct(stats.letter.c,stats.letter.t),
+        pCol=pct(stats.color.c,stats.color.t),
+        pShp=pct(stats.shape.c,stats.shape.t);
+  const totalC=stats.pos.c+stats.letter.c+stats.color.c+stats.shape.c;
+  const totalT=stats.pos.t+stats.letter.t+stats.color.t+stats.shape.t;
+  const pTot=pct(totalC,totalT);
+  rates.textContent = `場所${pPos}% 文字${pLet}% 色${pCol}% 形${pShp}% | 合計${pTot}%`;
+}
+
+/* ==== セッション制御 ==== */
+function nextStim(){
+  trial++; qLabel.textContent=`問: ${trial} / ${totalTrials}`;
+  const st = genStim(); history.push(st); renderStim(st);
+  // 選択クリア＆色リセット
+  selected={pos:false,letter:false,color:false,shape:false}; setBtnState();
+  allowInput = (trial>presentOnly);
+}
+
+function tick(){
+  if(phase==='show'){
+    phase='isi'; allowInput = (trial>presentOnly);
+    clearCells();
+    timer = setTimeout(tick, inputs.isi.value*1000);
+  }else if(phase==='isi'){
+    if(trial>presentOnly) finalizeTrial();
+    if(trial>=totalTrials){ phase='done'; alert(rates.textContent); return; }
+    phase='feedback'; timer = setTimeout(tick, feedbackMs);
+  }else if(phase==='feedback'){
+    phase='show'; nextStim(); timer = setTimeout(tick, inputs.disp.value*1000);
+  }
+}
+
+qs('start').addEventListener('click', ()=>{
+  if(phase!=='idle') return;
+  // 初期化
+  N = parseInt(inputs.n.value,10); nLabel.textContent=`N: ${N}`;
+  history=[]; stats={pos:{c:0,t:0},letter:{c:0,t:0},color:{c:0,t:0},shape:{c:0,t:0}}; updateRates();
+  presentOnly=N; trial=0; totalTrials=N*2; qLabel.textContent=`問: 0 / ${totalTrials}`;
+  phase='show'; nextStim(); timer=setTimeout(tick, inputs.disp.value*1000);
+});
+qs('reset').addEventListener('click', ()=>{
+  if(timer) clearTimeout(timer);
+  phase='idle'; trial=0; totalTrials=0; qLabel.textContent='問: 0 / 0';
+  history=[]; allowInput=false; selected={pos:false,letter:false,color:false,shape:false}; setBtnState();
+  stats={pos:{c:0,t:0},letter:{c:0,t:0},color:{c:0,t:0},shape:{c:0,t:0}}; updateRates();
+  clearCells();
+});
+</script>
+</body>
+</html>
